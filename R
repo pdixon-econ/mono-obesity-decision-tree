@@ -1,0 +1,351 @@
+rm(list = ls())
+
+### Decision tree for cost-effectiveness of new pathway for paediatric monogenic obesity. 
+
+#install.packages("BCEA")
+library(BCEA)
+library(ggplot2)
+
+
+set.seed(2025)
+
+#Define N of samples for probabilistic analysis 
+
+n_samples<-10000
+
+
+#Treatment decision - further or no further examination
+
+n_treat=2
+t_names=c("No further examination","Further examination")
+
+#########
+
+# Define scenarios for deterministic sensitivity analysis
+dsa_scenarios <- list(
+  
+  list(
+    name = "High e_resolved, Low e_unresolved",
+    e_resolved_params = list(mean = 0.85, sd = 0.085),
+    e_unresolved_params = list(mean = 0.2, sd = 0.02)
+  ),
+  list(
+    name = "Low e_resolved, High e_unresolved",
+    e_resolved_params = list(mean = 0.4, sd = 0.04),
+    e_unresolved_params = list(mean = 0.3, sd = 0.03)
+  )
+)
+
+
+# Function to run DSA for a given scenario
+run_dsa_scenarios <- function(scenarios) {
+  all_results <- list()  # Create a list to store results for each scenario
+  
+  for (scenario in scenarios) {
+    # Generate e_resolved and e_unresolved based on scenario parameters
+    e_resolved <- rnorm(n = n_samples, mean = scenario$e_resolved_params$mean, sd = scenario$e_resolved_params$sd)
+    e_unresolved <- rnorm(n = n_samples, mean = scenario$e_unresolved_params$mean, sd = scenario$e_unresolved_params$sd)
+    
+    # Update effects calculations (same as before)
+    effects <- (p_resolved * e_resolved) + 
+      (p_unresolved * e_unresolved) +
+      ((p_exam_normal * p_resolved) * e_resolved) +
+      ((p_exam_normal * p_unresolved) * e_unresolved) +
+      ((p_exam_abnormal * p_development_abnormal * p_growth_abnormal * p_array_normal * p_array_wgs_r149_resolved) * e_resolved) +
+      ((p_exam_abnormal * p_development_abnormal * p_growth_abnormal * p_array_normal * p_array_wgs_r149_unresolved) * e_unresolved) +
+      ((p_exam_abnormal * p_development_abnormal * p_growth_abnormal * p_array_abnormal * p_growthabnormalarray_resolved) * e_resolved) +
+      ((p_exam_abnormal * p_development_abnormal * p_growth_abnormal * p_array_abnormal * p_growthabnormalarray_unresolved) * e_unresolved) +
+      ((p_exam_normal * p_development_abnormal * p_growth_normal * p_array_normal * p_growthnormal_array_wgs_r149_resolved) * e_resolved) +
+      ((p_exam_normal * p_development_abnormal * p_growth_normal * p_array_normal * p_growthnormal_array_wgs_r149_unresolved) * e_unresolved) +
+      ((p_exam_abnormal * p_development_abnormal * p_growth_normal * p_array_abnormal * p_arrayabnormal_resolved) * e_resolved) +
+      ((p_exam_abnormal * p_development_abnormal * p_growth_normal * p_array_abnormal * p_arrayabnormal_unresolved) * e_unresolved) +
+      ((p_exam_normal * p_development_normal * p_r149_resolved) * e_resolved) +
+      ((p_exam_normal * p_development_normal * p_r149_unresolved) * e_unresolved)
+    
+    # Use BCEA to calculate cost-effectiveness
+    bcea_examine <- bcea(effects, costs, ref = 2, interventions = t_names, Kmax = 30000)
+    
+    # Extract mean effects and costs
+    mean_effects <- colMeans(bcea_examine$e)
+    mean_costs <- colMeans(bcea_examine$c)
+    
+    # Display the results
+    print(mean_effects)
+    print(mean_costs)
+    
+    # Generate summary results
+    summary_results <- summary(bcea_examine, wtp = 30000)
+    
+    # Save the results for this scenario
+    scenario_results <- list(
+      scenario_name = scenario$name,
+      summary = summary_results
+    )
+    
+    # Add the results to the list of all results
+    all_results[[scenario$name]] <- scenario_results
+  }
+  
+  return(all_results)
+}
+
+########################## Costs - see related tables in Word and PowerPoint ########################## 
+
+##Code to update CPRD costs to 2022/23 prices from 2021/22 prices - inflated using NHS Cost Inflation Index (NHSCII) from PSSRU 
+#Jones, Karen C., Weatherly, Helen, Birch, Sarah, Castelli, Adriana, Chalkley, Martin, Dargan, Alan, Forder, Julien E., Gao, Minyue, Hinde, Seb, Markham, Sarah and others (2024) Unit Costs of Health and Social Care 2023 Manual. Technical report. Personal Social Services Research Unit (University of Kent) & Centre for Health Economics (University of York), Kent, UK 10.22024/UniKent/01.02.105685 <https://doi.org/10.22024/UniKent%2F01.02.105685>
+
+c_inflate=1.07
+c_resolved=1329*c_inflate
+c_resolved
+c_unresolved=1605*c_inflate
+c_unresolved
+c_SOC=354*c_inflate
+c_SOC
+
+c_exam <- t(matrix(rep(c(0, 217), n_samples), ncol = n_samples, nrow = n_treat))  
+
+c_SOC=rnorm(n=n_samples,mean=379,sd=38)    
+
+
+c_resolved=rnorm(n=n_samples,mean=1422,sd=142) ##noted 6 january - update with real data
+
+c_unresolved=rnorm(n=n_samples,mean=1717,sd=171) ## ##noted 6 january - update with real data
+
+c_array_CGH_SNP=cbind(rep(0,n_samples),rnorm(n=n_samples, mean=320,sd=16))
+
+c_WGS=cbind(rep(0,n_samples),rnorm(n=n_samples,mean=1000,sd=100))
+c_R149=cbind(rep(0,n_samples),rnorm(n=n_samples,mean=650,65))
+
+c_semaglutide=rep(c(0,879),length.out = n_samples) # this is based on 1mg of the drug costing 73.25 per month
+
+##Effectiveness - are these parameters used - check re new function noted 7 January
+
+e_resolved=rnorm(n=n_samples,mean=0.6,sd=.06)
+
+e_unresolved=rnorm(n=n_samples,mean=0.2,sd=0.02)
+
+
+
+########################## Probabilities ########################## 
+
+
+##Function to output desired means of a beta distribution
+
+calculate_shape_parameters <- function(desired_mean) {
+  # Set an arbitrary value for one of the shape parameters 
+  alpha <- 1
+  
+  # Calculate beta using the formula
+  beta <- alpha / desired_mean - alpha
+  
+  # Return the calculated shape parameters
+  return(list(alpha = alpha, beta = beta))
+}
+
+# Example:
+desired_mean <- 0.9
+shape_params <- calculate_shape_parameters(desired_mean)
+cat("For a desired mean of", desired_mean, "the calculated shape parameters are:\n")
+cat("Alpha:", shape_params$alpha, "\n")
+cat("Beta:", shape_params$beta, "\n")
+
+##need to create the probabilities as matrices to take the results of each model run
+
+p_resolved <- p_unresolved <- matrix(nrow = n_samples, ncol = n_treat) ##Comment - this relates only to first decision and should be zero for col 2 since this
+#is for treatment (ie further examination) arm
+
+# Probabilities for no exam follow beta distribution - this will populate the first column of the matrices just created
+p_resolved[, 1] <- rbeta(n = n_samples,  shape1 = 1,  shape2 = 9) ##parameters based on a desired mean of 0.1 per conversations with clinical team
+p_resolved[,2]<-0
+
+p_unresolved[,1]<-1-p_resolved[,1]
+p_unresolved[,2]<-0
+
+
+###
+p_array_wgs_r149_resolved<-p_array_wgs_r149_unresolved<-matrix(nrow = n_samples, ncol = n_treat) ##based on mean of 80% 
+
+p_array_wgs_r149_resolved[,1]<-0
+p_array_wgs_r149_unresolved[,1]<-0
+
+p_array_wgs_r149_resolved[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.25) ##based on mean of 80% 
+p_array_wgs_r149_unresolved[,2]<-1-p_array_wgs_r149_resolved[,2] 
+
+###
+p_growthabnormalarray_resolved<-p_growthabnormalarray_unresolved<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_growthabnormalarray_resolved[,1]<-0
+p_growthabnormalarray_unresolved[,1]<-0
+
+p_growthabnormalarray_resolved[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.25) ##based on mean of 80% 
+p_growthabnormalarray_unresolved[,2]<-1-p_growthabnormalarray_resolved[,2] 
+
+###
+p_growthnormal_array_wgs_r149_resolved<-p_growthnormal_array_wgs_r149_unresolved<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_growthnormal_array_wgs_r149_resolved[,1]<-0
+p_growthnormal_array_wgs_r149_unresolved[,1]<-0
+
+p_growthnormal_array_wgs_r149_resolved[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.25) ##based on mean of 80% 
+p_growthnormal_array_wgs_r149_unresolved[,2]<-1-p_growthnormal_array_wgs_r149_resolved[,2]
+
+###
+p_arrayabnormal_resolved<-p_arrayabnormal_unresolved<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_arrayabnormal_resolved[,1]<-0
+p_arrayabnormal_unresolved[,1]<-0
+
+p_arrayabnormal_resolved[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.25) ##based on mean of 80% 
+p_arrayabnormal_unresolved[,2]<-1-p_arrayabnormal_resolved[,2]
+
+###
+
+p_r149_resolved<-p_r149_unresolved<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_r149_resolved[,1]<-0
+p_r149_unresolved[,1]<-0
+
+p_r149_resolved[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.25)  ##based on mean of 80% 
+p_r149_unresolved[,2]<-1-p_r149_resolved[,2]
+
+####Other probabilities 
+
+
+p_exam_normal<-p_exam_abnormal<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_exam_normal<-p_exam_abnormal<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_exam_normal[,1]<-0
+p_exam_abnormal[,1]<-0
+#
+p_exam_normal[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.67)  ##based on mean of 60% 
+p_exam_abnormal[,2]<-1-p_exam_normal[,2]
+
+
+###
+
+p_development_normal<-p_development_abnormal<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_development_normal[,1]<-0
+p_development_abnormal[,1]<-0
+
+p_development_normal[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.67) ##based on mean of 60%
+p_development_abnormal[,2]<-1-p_development_normal[,2]
+
+
+###
+p_growth_normal<-p_growth_abnormal<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_growth_normal[,1]<-0
+p_growth_abnormal[,1]<-0
+
+p_growth_normal[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.11) ##based on mean of 90%
+p_growth_abnormal[,2]<-1-p_growth_normal[,2]
+
+
+
+###
+
+p_array_normal<-p_array_abnormal<-matrix(nrow = n_samples, ncol = n_treat)
+
+p_array_normal[,1]<-0
+p_array_abnormal[,1]<-0
+
+p_array_normal[,2]<-rbeta(n = n_samples,  shape1 = 1,  shape2 = 0.17) ##based on mean of 0.85%
+p_array_abnormal[,2]<-1-p_array_normal[,2]
+
+
+
+
+########################## Write out equations for total cost and total effects - see related information in paper and Powerpoint ########################## 
+
+(costs<-c_exam+(p_resolved*c_SOC) #1
+              +(p_unresolved*c_SOC)# 2
+              +((p_exam_normal*p_resolved)*(c_SOC+c_resolved))#3
+              +((p_exam_normal*p_unresolved)*(c_SOC+c_unresolved))#4
+              +((p_exam_abnormal*p_development_abnormal*p_growth_abnormal*p_array_normal*p_array_wgs_r149_resolved)*(c_array_CGH_SNP+c_WGS+c_resolved+c_semaglutide))#5
+              +((p_exam_abnormal*p_development_abnormal*p_growth_abnormal*p_array_normal*p_array_wgs_r149_unresolved)*(c_array_CGH_SNP+c_WGS+c_R149+c_unresolved+c_semaglutide))#6
+              +((p_exam_abnormal*p_development_abnormal*p_growth_abnormal*p_array_abnormal*p_growthabnormalarray_resolved)*(c_array_CGH_SNP+c_resolved+c_semaglutide ))#7
+              +((p_exam_abnormal*p_development_abnormal*p_growth_abnormal*p_array_abnormal*p_growthabnormalarray_unresolved)*(c_array_CGH_SNP+c_unresolved+c_semaglutide))#8
+              +((p_exam_normal*p_development_abnormal*p_growth_normal*p_array_normal*p_growthnormal_array_wgs_r149_resolved)*(c_array_CGH_SNP+c_WGS+c_R149+c_resolved+c_semaglutide))#9
+              +((p_exam_normal*p_development_abnormal*p_growth_normal*p_array_normal*p_growthnormal_array_wgs_r149_unresolved)*(c_array_CGH_SNP+c_WGS+c_R149+c_unresolved+c_semaglutide))#10
+              +((p_exam_abnormal*p_development_abnormal*p_growth_normal*p_array_abnormal*p_arrayabnormal_resolved)*(c_array_CGH_SNP+c_resolved+c_semaglutide))#11
+              +((p_exam_abnormal*p_development_abnormal*p_growth_normal*p_array_abnormal*p_arrayabnormal_unresolved)*(c_array_CGH_SNP+c_unresolved+c_semaglutide))#12
+              +((p_exam_normal*p_development_normal*p_r149_resolved)*(c_R149+c_resolved+c_semaglutide))#13
+              +((p_exam_normal*p_development_normal*p_r149_unresolved)*(c_R149+c_unresolved+c_semaglutide))#14
+  
+)
+
+(effects<-
+            (p_resolved*e_resolved) #1
+            +(p_unresolved*e_unresolved)# 2
+            +((p_exam_normal*p_resolved)*(e_resolved))#3
+            +((p_exam_normal*p_unresolved)*(e_unresolved))#4
+            +((p_exam_abnormal*p_development_abnormal*p_growth_abnormal*p_array_normal*p_array_wgs_r149_resolved)*(e_resolved))#5
+            +((p_exam_abnormal*p_development_abnormal*p_growth_abnormal*p_array_normal*p_array_wgs_r149_unresolved)*(e_unresolved))#6
+            +((p_exam_abnormal*p_development_abnormal*p_growth_abnormal*p_array_abnormal*p_growthabnormalarray_resolved)*(e_resolved ))#7
+            +((p_exam_abnormal*p_development_abnormal*p_growth_abnormal*p_array_abnormal*p_growthabnormalarray_unresolved)*(e_unresolved))#8
+            +((p_exam_normal*p_development_abnormal*p_growth_normal*p_array_normal*p_growthnormal_array_wgs_r149_resolved)*(e_resolved))#9
+            +((p_exam_normal*p_development_abnormal*p_growth_normal*p_array_normal*p_growthnormal_array_wgs_r149_unresolved)*(e_unresolved))#10
+            +((p_exam_abnormal*p_development_abnormal*p_growth_normal*p_array_abnormal*p_arrayabnormal_resolved)*(e_resolved))#11
+            +((p_exam_abnormal*p_development_abnormal*p_growth_normal*p_array_abnormal*p_arrayabnormal_unresolved)*(e_unresolved))#12
+            +((p_exam_normal*p_development_normal*p_r149_resolved)*(e_resolved))#13
+            +((p_exam_normal*p_development_normal*p_r149_unresolved)*(e_unresolved))#14
+            
+          )
+
+########################## Process results of the model ########################## 
+
+# Can use the colMeans() function to get a quick look at the point estimate results. 
+colMeans(costs)
+colMeans(effects)
+
+#Use BCEA to get full results
+
+bcea_examine <- bcea(effects, costs, ref = 2, interventions = t_names, Kmax = 30000)
+
+summary(bcea_examine,wtp=30000)
+ce_plot = ceplane.plot(bcea_examine,
+                       graph = "ggplot2",
+                       wtp = 30000,
+                       title = NULL,
+                       ylab = "Incremental costs (£)",
+                       xlab = "Incremental QALYs") 
+
+
+print(ce_plot)
+
+
+##get gridlines
+
+
+ggsave("C:/Users/padra/Downloads/ceplane_plot.png", plot = ce_plot, width = 10, height = 8, dpi = 300)
+
+# Generate the Cost-Effectiveness Acceptability Curve Plot
+ceac_plot <- ceac.plot(bcea_examine, 
+                       graph = "ggplot2", 
+                       line = list(color = "red")) +
+  scale_x_continuous(breaks = seq(0, 30000, by = 5000)) +  # Set x-axis breaks
+  scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, 1)) +  # Set y-axis breaks and range
+  labs(
+    x = "Cost-effectiveness threshold (£)", 
+    y = "Probability of being cost-effective"  
+  ) +
+  ggtitle("") +  # Set an empty title
+  theme(
+    panel.grid.major.x = element_line(color = "grey80", linewidth =  0.5),  # Customize vertical gridlines
+    panel.grid.major.y = element_line(color = "grey80", linewidth =  0.5),  # Customize horizontal gridlines
+    panel.grid.minor.x = element_blank(),  # Remove minor vertical gridlines
+    panel.grid.minor.y = element_blank()   # Remove minor horizontal gridlines
+  )
+
+# Print and save the CEAC plot
+print(ceac_plot)
+
+
+
+ggsave("C:/Users/padra/Downloads/ceac_plot.png", plot = ceac_plot, width = 10, height = 8, dpi = 300)
+
+# Run DSA for all defined scenarios
+all_scenarios_results <- run_dsa_scenarios(dsa_scenarios)
+
