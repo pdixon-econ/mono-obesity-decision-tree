@@ -2,7 +2,7 @@ rm(list = ls())
 
 ### Decision tree for cost-effectiveness of new pathway for paediatric monogenic obesity.
 
-# install.packages("BCEA")
+install.packages("BCEA")
 library(BCEA)
 library(ggplot2)
 
@@ -31,7 +31,7 @@ c_exam <- t(matrix(rep(c(0, 230), n_samples),
 
 # Healthcare costs by obesity state (parameter uncertainty via SE; lognormal on the mean)
 # Source values in 2022/23 prices (Onyimadu et al 2025); inflated to 2023/24 via c_inflate.
-# SE scaled by same factor as mean, preserving coefficient of variation.
+# SE scaled by same factor as mean, preserving the coefficient of variation.
 
 mu_resolved_mean <- 1352.010 * c_inflate   # 2023/24 price: 1410.27
 se_resolved      <- 9.95     * c_inflate   # 2023/24 price: 10.38
@@ -67,6 +67,10 @@ c_R149 <- cbind(rep(0, n_samples),
 
 c_R107 <- cbind(rep(0, n_samples),
                 pmax(rnorm(n = n_samples, mean = 650, sd = 65), 0))
+
+# R27 panel cost (phenotype 2 non-BBS pathway); same cost assumption as R107/R149
+c_R27 <- cbind(rep(0, n_samples),
+               pmax(rnorm(n = n_samples, mean = 650, sd = 65), 0))
 
 # Combined panel cost for R48, R263, R293, R49, R452 (phenotype 1 pathway)
 # Aligned with R149 and R107 at £650 (SD: £65); assumed to apply to all panels
@@ -130,7 +134,7 @@ p_en_sc_unresolved[, 2] <- 1 - p_en_sc_resolved[, 2]
 #              -> R48, R263, R293, R49, R452 panels -> WGS + semaglutide
 # Phenotype 2: Dev delay OR dysmorphic OR congenital abnormalities OR delayed puberty
 #              -> R107 first; if BBS suggested: R107 + setmelanotide (no WGS)
-#              -> if BBS not suggested: R107 + WGS + semaglutide
+#              -> if BBS not suggested: R107 + R27 + R149 + semaglutide (no WGS)
 # Phenotype 3: Early onset obesity, no delay, not dysmorphic, no congenital abnormalities
 #              -> R149 -> panel normal: WGS+semaglutide; panel abnormal: setmelanotide
 
@@ -163,9 +167,8 @@ p_wgs_pheno1_resolved[, 2]   <- rbeta(n = n_samples, shape1 = 8, shape2 = 2)  # 
 p_wgs_pheno1_unresolved[, 2] <- 1 - p_wgs_pheno1_resolved[, 2]
 
 # ------------------------------------------------------------------
-# Phenotype 2: BBS suggested (1%) -> R107 + setmelanotide 
-#              Not BBS (99%)       -> R107 + WGS + semaglutide
-
+# Phenotype 2: BBS suggested (1%) -> R107 + setmelanotide (no WGS)
+#              Not BBS (99%)       -> R107 + R27 + R149 + semaglutide (no WGS)
 # ------------------------------------------------------------------
 p_bardet_biedl     <- p_not_bardet_biedl <- matrix(nrow = n_samples, ncol = n_treat)
 p_bardet_biedl[, 1]     <- 0
@@ -174,14 +177,14 @@ p_not_bardet_biedl[, 1] <- 0
 p_bardet_biedl[, 2]     <- rbeta(n = n_samples, shape1 = 1, shape2 = 99)  # mean 0.01
 p_not_bardet_biedl[, 2] <- 1 - p_bardet_biedl[, 2]
 
-# Pheno2, NOT BBS -> R107 + WGS + semaglutide
+# Pheno2, NOT BBS -> R107 + R27 + R149 + semaglutide (no WGS)
 
-p_wgs_pheno2_resolved  <- p_wgs_pheno2_unresolved <- matrix(nrow = n_samples, ncol = n_treat)
-p_wgs_pheno2_resolved[, 1]   <- 0
-p_wgs_pheno2_unresolved[, 1] <- 0
+p_r27r149_pheno2_resolved  <- p_r27r149_pheno2_unresolved <- matrix(nrow = n_samples, ncol = n_treat)
+p_r27r149_pheno2_resolved[, 1]   <- 0
+p_r27r149_pheno2_unresolved[, 1] <- 0
 
-p_wgs_pheno2_resolved[, 2]   <- rbeta(n = n_samples, shape1 = 8, shape2 = 2)  # mean 0.8
-p_wgs_pheno2_unresolved[, 2] <- 1 - p_wgs_pheno2_resolved[, 2]
+p_r27r149_pheno2_resolved[, 2]   <- rbeta(n = n_samples, shape1 = 8, shape2 = 2)  # mean 0.8
+p_r27r149_pheno2_unresolved[, 2] <- 1 - p_r27r149_pheno2_resolved[, 2]
 
 # Pheno2, BBS -> R107 + setmelanotide (no WGS)
 
@@ -195,7 +198,6 @@ p_r107_unresolved[, 2] <- 1 - p_r107_resolved[, 2]
 # ------------------------------------------------------------------
 # Phenotype 3: R149 panel -> normal (99%) -> WGS + semaglutide
 #                         -> not normal (1%) -> setmelanotide (no WGS)
-
 # ------------------------------------------------------------------
 p_r149_panel_normal   <- matrix(nrow = n_samples, ncol = n_treat)
 p_r149_panel_normal[, 1] <- 0
@@ -228,7 +230,7 @@ p_r149_setmela_unresolved[, 2] <- 1 - p_r149_setmela_resolved[, 2]
 # 1) Exam normal -> SOC (resolved/unresolved)
 # 2) Exam abnormal -> pheno1 -> R48etc panel normal -> WGS+sema (resolved/unresolved)
 # 3) Exam abnormal -> pheno1 -> R48etc panel abnormal -> WGS+sema (resolved/unresolved)
-# 4) Exam abnormal -> pheno2 -> NOT BBS -> R107+WGS+sema (resolved/unresolved)
+# 4) Exam abnormal -> pheno2 -> NOT BBS -> R107+R27+R149+sema (resolved/unresolved)
 # 5) Exam abnormal -> pheno2 -> BBS -> R107+setmela (resolved/unresolved)
 # 6) Exam abnormal -> pheno3 -> R149 normal -> WGS+sema (resolved/unresolved)
 # 7) Exam abnormal -> pheno3 -> R149 not normal -> setmela (resolved/unresolved)
@@ -236,24 +238,24 @@ p_r149_setmela_unresolved[, 2] <- 1 - p_r149_setmela_resolved[, 2]
 p_terminal_arm2 <- (
   # Exam normal
   (p_exam_normal[, 2] * (p_en_sc_resolved[, 2] + p_en_sc_unresolved[, 2])) +
-  # Pheno1, panel normal, WGS
-  (p_exam_abnormal[, 2] * p_pheno1[, 2] * p_pheno1_panel_normal[, 2] *
-     (p_wgs_pheno1_resolved[, 2] + p_wgs_pheno1_unresolved[, 2])) +
-  # Pheno1, panel abnormal, WGS
-  (p_exam_abnormal[, 2] * p_pheno1[, 2] * p_pheno1_panel_abnormal[, 2] *
-     (p_wgs_pheno1_resolved[, 2] + p_wgs_pheno1_unresolved[, 2])) +
-  # Pheno2, NOT BBS, R107+WGS
-  (p_exam_abnormal[, 2] * p_pheno2[, 2] * p_not_bardet_biedl[, 2] *
-     (p_wgs_pheno2_resolved[, 2] + p_wgs_pheno2_unresolved[, 2])) +
-  # Pheno2, BBS, R107 only (no WGS)
-  (p_exam_abnormal[, 2] * p_pheno2[, 2] * p_bardet_biedl[, 2] *
-     (p_r107_resolved[, 2] + p_r107_unresolved[, 2])) +
-  # Pheno3, R149 normal, WGS
-  (p_exam_abnormal[, 2] * p_pheno3[, 2] * p_r149_panel_normal[, 2] *
-     (p_r149_wgs_resolved[, 2] + p_r149_wgs_unresolved[, 2])) +
-  # Pheno3, R149 not normal, setmelanotide
-  (p_exam_abnormal[, 2] * p_pheno3[, 2] * p_r149_panel_abnormal[, 2] *
-     (p_r149_setmela_resolved[, 2] + p_r149_setmela_unresolved[, 2]))
+    # Pheno1, panel normal, WGS
+    (p_exam_abnormal[, 2] * p_pheno1[, 2] * p_pheno1_panel_normal[, 2] *
+       (p_wgs_pheno1_resolved[, 2] + p_wgs_pheno1_unresolved[, 2])) +
+    # Pheno1, panel abnormal, WGS
+    (p_exam_abnormal[, 2] * p_pheno1[, 2] * p_pheno1_panel_abnormal[, 2] *
+       (p_wgs_pheno1_resolved[, 2] + p_wgs_pheno1_unresolved[, 2])) +
+    # Pheno2, NOT BBS, R107+R27+R149+sema (no WGS)
+    (p_exam_abnormal[, 2] * p_pheno2[, 2] * p_not_bardet_biedl[, 2] *
+       (p_r27r149_pheno2_resolved[, 2] + p_r27r149_pheno2_unresolved[, 2])) +
+    # Pheno2, BBS, R107+setmela (no WGS)
+    (p_exam_abnormal[, 2] * p_pheno2[, 2] * p_bardet_biedl[, 2] *
+       (p_r107_resolved[, 2] + p_r107_unresolved[, 2])) +
+    # Pheno3, R149 normal, WGS
+    (p_exam_abnormal[, 2] * p_pheno3[, 2] * p_r149_panel_normal[, 2] *
+       (p_r149_wgs_resolved[, 2] + p_r149_wgs_unresolved[, 2])) +
+    # Pheno3, R149 not normal, setmelanotide
+    (p_exam_abnormal[, 2] * p_pheno3[, 2] * p_r149_panel_abnormal[, 2] *
+       (p_r149_setmela_resolved[, 2] + p_r149_setmela_unresolved[, 2]))
 )
 
 tol <- 1e-8
@@ -273,14 +275,14 @@ if (any(abs(p_terminal_arm2 - 1) > tol)) {
 ########################## Total costs and effects ##########################
 
 costs <- c_exam +
-
+  
   # No further exam arm: SOC only
   cbind(c_SOC, rep(0, n_samples)) +
-
+  
   # Further exam, exam normal -> SOC only (no targeted treatment)
   ((p_exam_normal * p_en_sc_resolved)   * c_resolved) +
   ((p_exam_normal * p_en_sc_unresolved) * c_unresolved) +
-
+  
   # Exam abnormal + pheno1 -> R48etc panel (always) -> WGS + semaglutide
   # Panel normal (85%)
   ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_normal * p_wgs_pheno1_resolved) *
@@ -292,25 +294,23 @@ costs <- c_exam +
      (c_R48etc + c_WGS + c_semaglutide + c_resolved)) +
   ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_abnormal * p_wgs_pheno1_unresolved) *
      (c_R48etc + c_WGS + c_semaglutide + c_unresolved)) +
-
-  # Exam abnormal + pheno2 + NOT BBS -> R107 + WGS + semaglutide
-
+  
+  # Exam abnormal + pheno2 + NOT BBS -> R107 + R27 + R149 + semaglutide (no WGS)
   ((p_exam_abnormal * p_pheno2 *
-      p_not_bardet_biedl * p_wgs_pheno2_resolved) *
-     (c_R107 + c_WGS + c_semaglutide + c_resolved)) +
+      p_not_bardet_biedl * p_r27r149_pheno2_resolved) *
+     (c_R107 + c_R27 + c_R149 + c_semaglutide + c_resolved)) +
   ((p_exam_abnormal * p_pheno2 *
-      p_not_bardet_biedl * p_wgs_pheno2_unresolved) *
-     (c_R107 + c_WGS + c_semaglutide + c_unresolved)) +
-
+      p_not_bardet_biedl * p_r27r149_pheno2_unresolved) *
+     (c_R107 + c_R27 + c_R149 + c_semaglutide + c_unresolved)) +
+  
   # Exam abnormal + pheno2 + BBS -> R107 + setmelanotide (no WGS)
-
   ((p_exam_abnormal * p_pheno2 *
       p_bardet_biedl * p_r107_resolved) *
      (c_R107 + c_setmelanotide + c_resolved)) +
   ((p_exam_abnormal * p_pheno2 *
       p_bardet_biedl * p_r107_unresolved) *
      (c_R107 + c_setmelanotide + c_unresolved)) +
-
+  
   # Exam abnormal + pheno3 -> R149 panel
   # R149 normal (99%) -> WGS + semaglutide
   ((p_exam_abnormal * p_pheno3 *
@@ -331,30 +331,30 @@ effects <-
   # No further exam arm
   (p_resolved   * e_resolved) +
   (p_unresolved * e_unresolved) +
-
+  
   # Further exam, exam normal -> SOC
   ((p_exam_normal * p_en_sc_resolved)   * e_resolved) +
   ((p_exam_normal * p_en_sc_unresolved) * e_unresolved) +
-
+  
   # Exam abnormal + pheno1 -> panel normal -> WGS + sema
   ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_normal * p_wgs_pheno1_resolved)   * e_resolved) +
   ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_normal * p_wgs_pheno1_unresolved) * e_unresolved) +
   # Exam abnormal + pheno1 -> panel abnormal -> WGS + sema
   ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_abnormal * p_wgs_pheno1_resolved)   * e_resolved) +
   ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_abnormal * p_wgs_pheno1_unresolved) * e_unresolved) +
-
-  # Exam abnormal + pheno2 + NOT BBS -> R107 + WGS
+  
+  # Exam abnormal + pheno2 + NOT BBS -> R107 + R27 + R149 + sema (no WGS)
   ((p_exam_abnormal * p_pheno2 *
-      p_not_bardet_biedl * p_wgs_pheno2_resolved)   * e_resolved) +
+      p_not_bardet_biedl * p_r27r149_pheno2_resolved)   * e_resolved) +
   ((p_exam_abnormal * p_pheno2 *
-      p_not_bardet_biedl * p_wgs_pheno2_unresolved) * e_unresolved) +
-
+      p_not_bardet_biedl * p_r27r149_pheno2_unresolved) * e_unresolved) +
+  
   # Exam abnormal + pheno2 + BBS -> R107 + setmelanotide (no WGS)
   ((p_exam_abnormal * p_pheno2 *
       p_bardet_biedl * p_r107_resolved)   * e_resolved) +
   ((p_exam_abnormal * p_pheno2 *
       p_bardet_biedl * p_r107_unresolved) * e_unresolved) +
-
+  
   # Exam abnormal + pheno3 -> R149 normal -> WGS + sema
   ((p_exam_abnormal * p_pheno3 *
       p_r149_panel_normal * p_r149_wgs_resolved)   * e_resolved) +
@@ -465,46 +465,48 @@ dsa_scenarios <- list(
 
 run_dsa_scenarios <- function(scenarios) {
   all_results <- list()
-
+  
   for (scenario in scenarios) {
     cat("\n========================================\n")
     cat("Running DSA scenario:", scenario$name, "\n")
     cat("========================================\n")
-
+    
     e_resolved_dsa   <- rnorm(n = n_samples,
                               mean = scenario$e_resolved_params$mean,
                               sd   = scenario$e_resolved_params$sd)
     e_unresolved_dsa <- rnorm(n = n_samples,
                               mean = scenario$e_unresolved_params$mean,
                               sd   = scenario$e_unresolved_params$sd)
-
+    
     # Costs unchanged in DSA (only effects varied)
     costs_dsa <- costs
-
+    
     effects_dsa <-
       (p_resolved   * e_resolved_dsa) +
       (p_unresolved * e_unresolved_dsa) +
-
+      
       ((p_exam_normal * p_en_sc_resolved)   * e_resolved_dsa) +
       ((p_exam_normal * p_en_sc_unresolved) * e_unresolved_dsa) +
-
+      
       # Pheno1, panel normal
       ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_normal * p_wgs_pheno1_resolved)   * e_resolved_dsa) +
       ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_normal * p_wgs_pheno1_unresolved) * e_unresolved_dsa) +
       # Pheno1, panel abnormal
       ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_abnormal * p_wgs_pheno1_resolved)   * e_resolved_dsa) +
       ((p_exam_abnormal * p_pheno1 * p_pheno1_panel_abnormal * p_wgs_pheno1_unresolved) * e_unresolved_dsa) +
-
+      
+      # Pheno2, NOT BBS -> R107 + R27 + R149 + sema (no WGS)
       ((p_exam_abnormal * p_pheno2 *
-          p_not_bardet_biedl * p_wgs_pheno2_resolved)   * e_resolved_dsa) +
+          p_not_bardet_biedl * p_r27r149_pheno2_resolved)   * e_resolved_dsa) +
       ((p_exam_abnormal * p_pheno2 *
-          p_not_bardet_biedl * p_wgs_pheno2_unresolved) * e_unresolved_dsa) +
-
+          p_not_bardet_biedl * p_r27r149_pheno2_unresolved) * e_unresolved_dsa) +
+      
+      # Pheno2, BBS -> R107 + setmelanotide (no WGS)
       ((p_exam_abnormal * p_pheno2 *
           p_bardet_biedl * p_r107_resolved)   * e_resolved_dsa) +
       ((p_exam_abnormal * p_pheno2 *
           p_bardet_biedl * p_r107_unresolved) * e_unresolved_dsa) +
-
+      
       # Pheno3, R149 normal -> WGS
       ((p_exam_abnormal * p_pheno3 *
           p_r149_panel_normal * p_r149_wgs_resolved)   * e_resolved_dsa) +
@@ -515,26 +517,26 @@ run_dsa_scenarios <- function(scenarios) {
           p_r149_panel_abnormal * p_r149_setmela_resolved)   * e_resolved_dsa) +
       ((p_exam_abnormal * p_pheno3 *
           p_r149_panel_abnormal * p_r149_setmela_unresolved) * e_unresolved_dsa)
-
+    
     bcea_examine_dsa <- bcea(effects_dsa, costs_dsa, ref = 1,
                              interventions = t_names, Kmax = 35000)
-
+    
     mean_effects <- colMeans(bcea_examine_dsa$e)
     mean_costs   <- colMeans(bcea_examine_dsa$c)
-
+    
     cat("Mean effects (No exam, Further):\n")
     print(mean_effects)
     cat("Mean costs (No exam, Further):\n")
     print(mean_costs)
-
+    
     summary_results <- summary(bcea_examine_dsa, wtp = 35000)
-
+    
     all_results[[scenario$name]] <- list(
       scenario_name = scenario$name,
       summary       = summary_results
     )
   }
-
+  
   return(all_results)
 }
 
